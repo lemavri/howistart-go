@@ -36,6 +36,18 @@ func main() {
 	http.ListenAndServe(":8080", nil)
 }
 
+type multiWeatherProvider []weatherProvider
+
+type weatherProvider interface {
+	temperature(city string) (float64, error) // in celsius
+}
+
+type openWeatherMap struct{}
+
+type weatherUnderground struct {
+	apiKey string
+}
+
 func (w multiWeatherProvider) temperature(city string) (float64, error) {
 	sum := 0.0
 
@@ -49,18 +61,6 @@ func (w multiWeatherProvider) temperature(city string) (float64, error) {
 	}
 
 	return sum / float64(len(w)), nil
-}
-
-type multiWeatherProvider []weatherProvider
-
-type weatherProvider interface {
-	temperature(city string) (float64, error) // in celsius
-}
-
-type openWeatherMap struct{}
-
-type weatherUnderground struct {
-	apiKey string
 }
 
 func (w openWeatherMap) temperature(city string) (float64, error) {
