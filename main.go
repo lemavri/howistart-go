@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -13,6 +14,7 @@ func main() {
 	mw := multiWeatherProvider{
 		openWeatherMap{},
 		weatherUnderground{apiKey: "40ea560e7394ad7e"},
+		forecast{apiKey: "f9b1c747e903aeba1637c39b35670424", requireCoords: true},
 	}
 
 	http.HandleFunc("/weather/", func(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +48,11 @@ type openWeatherMap struct{}
 
 type weatherUnderground struct {
 	apiKey string
+}
+
+type forecast struct {
+	apiKey        string
+	requireCoords bool
 }
 
 func (w multiWeatherProvider) temperature(city string) (float64, error) {
@@ -124,4 +131,63 @@ func (w weatherUnderground) temperature(city string) (float64, error) {
 	log.Printf("weatherUnderground: %s: %.2f", city, celsius)
 
 	return celsius, nil
+}
+
+func (w forecast) temperature(city string) (float64, error) {
+	lat, lng, err := getCoords(city)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := http.Get("https://api.forecast.io/forecast/" + w.apiKey + "/" + strconv.FormatFloat(lat, 'f', 7, 64) + "," + strconv.FormatFloat(lng, 'f', 7, 64))
+
+	if err != nil {
+		return 0, err
+	}
+
+	defer resp.Body.Close()
+
+	var d struct {
+		Currently struct {
+			Farenheit float64 `json:"temperature"`
+		} `json:"currently"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
+		return 0, err
+	}
+
+	celsius := (d.Currently.Farenheit - float64(32)) / 1.8
+	log.Printf("forecast: %s: %.2f", city, celsius)
+
+	return celsius, nil
+}
+
+func getCoords(city string) (float64, float64, error) {
+	resp, err := http.Get("http://maps.googleapis.com/maps/api/geocode/json?address=" + city)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	defer resp.Body.Close()
+
+	var coords struct {
+		Results []struct {
+			Geometry struct {
+				Location struct {
+					Lat float64 `json:"lat"`
+					Lng float64 `json:"lng"`
+				} `json:"location"`
+			} `json:"geometry"`
+		} `json:"results"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&coords); err != nil {
+		return 0, 0, err
+	}
+
+	lat := coords.Results[0].Geometry.Location.Lat
+	lng := coords.Results[0].Geometry.Location.Lng
+	log.Printf("Coords of %s located: %f, %f", city, lat, lng)
+
+	return lat, lng, nil
 }
