@@ -57,6 +57,7 @@ type forecast struct {
 
 func (w multiWeatherProvider) temperature(city string) (float64, error) {
 
+	timedout := 0
 	temps := make(chan float64, len(w))
 	errs := make(chan error, len(w))
 
@@ -79,10 +80,13 @@ func (w multiWeatherProvider) temperature(city string) (float64, error) {
 			sum += temp
 		case err := <-errs:
 			return 0, err
+		case <-time.After(2 * time.Second):
+			timedout++
+			return 0, nil
 		}
 	}
 
-	return sum / float64(len(w)), nil
+	return sum / (float64(len(w)) - float64(timedout)), nil
 }
 
 func (w openWeatherMap) temperature(city string) (float64, error) {
